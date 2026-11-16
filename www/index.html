@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Substack Recall — Spaced Repetition</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: '#FF6719', // Aksen warna khas Substack
+            darkbg: '#0f172a',
+            cardbg: '#1e293b'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+<body class="bg-darkbg text-slate-100 min-h-screen font-sans pb-24">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-20 bg-darkbg/80 backdrop-blur-md border-b border-slate-800 px-4 py-4 flex justify-between items-center">
+    <div>
+      <h1 class="text-lg font-bold tracking-tight flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-brand inline-block"></span>
+        Substack Recall
+      </h1>
+      <p class="text-xs text-slate-400">Spaced Repetition Reader Notes</p>
+    </div>
+    <button onclick="requestNotifPermission()" id="notifBadge" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded-full text-slate-300 transition">
+      🔔 Cek Izin Notif
+    </button>
+  </header>
+
+  <main class="max-w-md mx-auto px-4 pt-5 space-y-6">
+
+    <!-- Statistik Singkat -->
+    <div class="grid grid-cols-2 gap-3">
+      <div class="bg-cardbg border border-slate-800 p-3.5 rounded-2xl">
+        <p class="text-xs text-slate-400">Wajib Review Hari Ini</p>
+        <p id="dueCount" class="text-2xl font-bold text-brand mt-1">0</p>
+      </div>
+      <div class="bg-cardbg border border-slate-800 p-3.5 rounded-2xl">
+        <p class="text-xs text-slate-400">Total Catatan</p>
+        <p id="totalCount" class="text-2xl font-bold text-slate-100 mt-1">0</p>
+      </div>
+    </div>
+
+    <!-- Form Tambah Catatan -->
+    <section class="bg-cardbg border border-slate-800 p-4 rounded-2xl space-y-3 shadow-lg">
+      <h2 class="text-sm font-semibold text-slate-200">+ Catat Artikel Baru</h2>
+      
+      <input type="text" id="titleInput" placeholder="Judul artikel Substack..." 
+        class="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-brand transition" />
+      
+      <input type="url" id="urlInput" placeholder="Link artikel (opsional, https://...)" 
+        class="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-brand transition" />
+      
+      <textarea id="noteInput" rows="3" placeholder="Intisari / poin penting yang ingin diingat..." 
+        class="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-brand transition"></textarea>
+      
+      <button onclick="addNote()" 
+        class="w-full bg-brand hover:bg-orange-600 active:scale-[0.99] text-white font-semibold py-2.5 rounded-xl text-sm transition shadow-md shadow-brand/20">
+        Simpan & Jadwalkan Review (Besok)
+      </button>
+    </section>
+
+    <!-- Daftar Review Hari Ini -->
+    <section class="space-y-3">
+      <div class="flex justify-between items-center">
+        <h2 class="text-sm font-semibold text-slate-300">Jadwal Review Sekarang</h2>
+        <span class="text-[11px] text-slate-500">Tap kartu untuk lihat isi</span>
+      </div>
+      <div id="dueList" class="space-y-3"></div>
+    </section>
+
+    <!-- Daftar Jadwal Mendatang -->
+    <section class="space-y-3 pt-2">
+      <h2 class="text-sm font-semibold text-slate-400">Jadwal Mendatang</h2>
+      <div id="upcomingList" class="space-y-2.5"></div>
+    </section>
+
+  </main>
+
+  <script>
+    const STORAGE_KEY = 'substack_sr_notes_v1';
+    let notes = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+
+    // Helper: Deteksi apakah berjalan di dalam Capacitor Android/iOS
+    const isCapacitor = () => window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+
+    // 1. Minta Izin Notifikasi (Capacitor Native atau Web Fallback)
+    async function requestNotifPermission() {
+      const badge = document.getElementById('notifBadge');
+      if (isCapacitor()) {
+        const { LocalNotifications } = window.Capacitor.Plugins;
+        const perm = await LocalNotifications.requestPermissions();
+        if (perm.display === 'granted') {
+          badge.textContent = '🔔 Notif Aktif (Native)';
+          badge.classList.add('text-emerald-400', 'border-emerald-800');
+        }
+      } else if ('Notification' in window) {
+        const perm = await Notification.requestPermission();
+        if (perm === 'granted') {
+          badge.textContent = '🔔 Notif Aktif (Web)';
+          badge.classList.add('text-emerald-400', 'border-emerald-800');
+        } else {
+          alert('Izin notifikasi ditolak browser.');
+        }
+      }
+    }
+
+    // 2. Jadwalkan Notifikasi OS via Capacitor
+    async function scheduleReviewNotification(note) {
+      if (!isCapacitor()) {
+        console.log(`[Simulasi Web] Notifikasi dijadwalkan untuk "${note.title}" pada ${new Date(note.nextReview).toLocaleString('id-ID')}`);
+        return;
+      }
+
+      const { LocalNotifications } = window.Capacitor.Plugins;
+      // Gunakan numeric ID 32-bit yang aman untuk Android NotificationManager
+      const notifId = Math.abs(note.id % 2147483647);
+
+      // Batalkan jadwal lama jika ada (untuk note yang sama)
+      await LocalNotifications.cancel({ notifications: [{ id: notifId }] });
+
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: notifId,
+            title: '🧠 Waktunya Review Artikel!',
+            body: `Ingat poin penting dari: "${note.title}"?`,
+            schedule: { at: new Date(note.nextReview), allowWhileIdle: true },
+            sound: null,
+            extra: { noteId: note.id }
+          }
+        ]
+      });
+    }
+
+    // 3. Tambah Catatan Baru
+    async function addNote() {
+      const title = document.getElementById('titleInput').value.trim();
+      const url = document.getElementById('urlInput').value.trim();
+      const content = document.getElementById('noteInput').value.trim();
+
+      if (!title || !content) {
+        alert('Judul dan intisari catatan wajib diisi.');
+        return;
+      }
+
+      // Interval awal: 1 hari (24 jam dari sekarang)
+      const oneDayMs = 24 * 60 * 60 * 1000;
+      const newNote = {
+        id: Date.now(),
+        title,
+        url,
+        content,
+        interval: 1, // dalam hari
+        easeFactor: 2.5,
+        repetitions: 0,
+        nextReview: Date.now() + oneDayMs,
+        createdAt: Date.now()
+      };
+
+      notes.unshift(newNote);
+      saveNotes();
+      await scheduleReviewNotification(newNote);
+
+      // Reset input
+      document.getElementById('titleInput').value = '';
+      document.getElementById('urlInput').value = '';
+      document.getElementById('noteInput').value = '';
+      render();
+    }
+
+    // 4. Algoritma SM-2 saat tombol review ditekan
+    // quality: 0 = Lupa, 3 = Sulit, 4 = Ingat, 5 = Mudah
+    async function processReview(id, quality) {
+      const idx = notes.findIndex(n => n.id === id);
+      if (idx === -1) return;
+
+      const note = notes[idx];
+
+      if (quality < 3) {
+        // Lupa -> Reset interval ke 1 hari
+        note.repetitions = 0;
+        note.interval = 1;
+      } else {
+        if (note.repetitions === 0) {
+          note.interval = 1;
+        } else if (note.repetitions === 1) {
+          note.interval = 3;
+        } else {
+          note.interval = Math.round(note.interval * note.easeFactor);
+        }
+        note.repetitions += 1;
+      }
+
+      // Update Ease Factor (minimal 1.3)
+      note.easeFactor = Math.max(1.3, note.easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)));
+      
+      // Set waktu review berikutnya (jam 09:00 pagi pada hari target agar notif muncul di jam produktif)
+      const targetDate = new Date(Date.now() + note.interval * 24 * 60 * 60 * 1000);
+      targetDate.setHours(9, 0, 0, 0);
+      note.nextReview = targetDate.getTime();
+
+      notes[idx] = note;
+      saveNotes();
+      await scheduleReviewNotification(note);
+      render();
+    }
+
+    function deleteNote(id) {
+      if (!confirm('Hapus catatan ini?')) return;
+      notes = notes.filter(n => n.id !== id);
+      saveNotes();
+      render();
+    }
+
+    function toggleReveal(id) {
+      const el = document.getElementById(`content-${id}`);
+      if (el) el.classList.toggle('hidden');
+    }
+
+    function saveNotes() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+    }
+
+    function formatRelativeTime(timestamp) {
+      const diffMs = timestamp - Date.now();
+      const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+      if (diffHours <= 0) return 'Sekarang';
+      if (diffHours < 24) return `${diffHours} jam lagi`;
+      const diffDays = Math.round(diffHours / 24);
+      return `${diffDays} hari lagi`;
+    }
+
+    // 5. Render UI
+    function render() {
+      const now = Date.now();
+      const dueNotes = notes.filter(n => n.nextReview <= now);
+      const upcomingNotes = notes.filter(n => n.nextReview > now).sort((a, b) => a.nextReview - b.nextReview);
+
+      document.getElementById('dueCount').textContent = dueNotes.length;
+      document.getElementById('totalCount').textContent = notes.length;
+
+      const dueList = document.getElementById('dueList');
+      const upcomingList = document.getElementById('upcomingList');
+
+      if (dueNotes.length === 0) {
+        dueList.innerHTML = `<div class="text-center py-6 bg-cardbg/50 border border-dashed border-slate-800 rounded-2xl text-xs text-slate-400">Semua catatan sudah di-review! 🎉</div>`;
+      } else {
+        dueList.innerHTML = dueNotes.map(note => `
+          <div class="bg-cardbg border border-brand/40 p-4 rounded-2xl space-y-3">
+            <div onclick="toggleReveal(${note.id})" class="cursor-pointer">
+              <div class="flex justify-between items-start gap-2">
+                <h3 class="font-semibold text-sm text-slate-100">${escapeHtml(note.title)}</h3>
+                <span class="text-[10px] bg-brand/20 text-brand px-2 py-0.5 rounded-full shrink-0">Interval: ${note.interval}h</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Tap untuk uji ingatan & buka jawaban...</p>
+            </div>
+
+            <div id="content-${note.id}" class="hidden pt-2 border-t border-slate-800 space-y-3">
+              <p class="text-sm text-slate-200 whitespace-pre-line bg-slate-900/70 p-3 rounded-xl">${escapeHtml(note.content)}</p>
+              ${note.url ? `<a href="${escapeHtml(note.url)}" target="_blank" class="inline-block text-xs text-brand underline">Buka Artikel Asli ↗</a>` : ''}
+              
+              <div class="grid grid-cols-4 gap-1.5 pt-1">
+                <button onclick="processReview(${note.id}, 0)" class="bg-rose-950/80 hover:bg-rose-900 border border-rose-800/60 text-rose-300 py-2 rounded-lg text-xs font-medium">Lupa<br><span class="text-[10px] opacity-75">1 hr</span></button>
+                <button onclick="processReview(${note.id}, 3)" class="bg-amber-950/80 hover:bg-amber-900 border border-amber-800/60 text-amber-300 py-2 rounded-lg text-xs font-medium">Sulit<br><span class="text-[10px] opacity-75">~${Math.max(1, Math.round(note.interval * 1.2))} hr</span></button>
+                <button onclick="processReview(${note.id}, 4)" class="bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-800/60 text-emerald-300 py-2 rounded-lg text-xs font-medium">Ingat<br><span class="text-[10px] opacity-75">~${note.repetitions === 0 ? 1 : note.repetitions === 1 ? 3 : Math.round(note.interval * note.easeFactor)} hr</span></button>
+                <button onclick="processReview(${note.id}, 5)" class="bg-sky-950/80 hover:bg-sky-900 border border-sky-800/60 text-sky-300 py-2 rounded-lg text-xs font-medium">Mudah<br><span class="text-[10px] opacity-75">~${Math.round((note.interval || 1) * note.easeFactor * 1.3)} hr</span></button>
+              </div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      upcomingList.innerHTML = upcomingNotes.map(note => `
+        <div class="bg-cardbg/60 border border-slate-800/80 p-3.5 rounded-xl flex justify-between items-center gap-3">
+          <div class="min-w-0">
+            <h4 class="text-sm font-medium text-slate-200 truncate">${escapeHtml(note.title)}</h4>
+            <p class="text-xs text-slate-400 mt-0.5">Review: <span class="text-slate-300">${formatRelativeTime(note.nextReview)}</span> (Interval ${note.interval} hari)</p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button onclick="forceDue(${note.id})" title="Test Review Sekarang" class="text-xs bg-slate-800 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg text-slate-300">Review</button>
+            <button onclick="deleteNote(${note.id})" title="Hapus" class="text-xs text-slate-500 hover:text-rose-400 px-1.5 py-1.5">✕</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Helper untuk testing langsung tanpa menunggu 24 jam
+    function forceDue(id) {
+      const idx = notes.findIndex(n => n.id === id);
+      if (idx !== -1) {
+        notes[idx].nextReview = Date.now() - 1000;
+        saveNotes();
+        render();
+      }
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
+    render();
+  </script>
+</body>
+</html>
