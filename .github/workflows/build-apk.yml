@@ -5,6 +5,10 @@ on:
   push:
     branches: [ main ]
 
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -28,18 +32,28 @@ jobs:
           npm init -y
           npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/local-notifications @capacitor/assets tailwindcss@3
           
-          # Compile Tailwind CSS secara lokal agar 100% offline
+          # Buat tailwind.config.js agar semua class di www/index.html ter-compile sempurna
+          cat << 'EOF' > tailwind.config.js
+          module.exports = {
+            content: ["./www/**/*.html"],
+            darkMode: 'class',
+            theme: { extend: {} },
+            plugins: [],
+          }
+          EOF
           printf "@tailwind base;\n@tailwind components;\n@tailwind utilities;\n" > input.css
-          npx tailwindcss -i input.css -o www/tailwind.css --content "www/index.html" --minify
+          npx tailwindcss -i input.css -o www/tailwind.css --minify
           
           npx cap init "Substack Recall" "com.faiz.substackrecall" --web-dir=www
           npx cap add android
           
-          # Generate semua resolusi icon Android dari assets/icon.png jika tersedia
+          # Generate icon dan splash dari assets/icon.png
           if [ -f "assets/icon.png" ]; then
             cp assets/icon.png assets/icon-only.png
             cp assets/icon.png assets/icon-foreground.png
-            npx capacitor-assets generate --android --iconBackgroundColor '#121110'
+            cp assets/icon.png assets/splash.png
+            cp assets/icon.png assets/splash-dark.png
+            npx capacitor-assets generate --android --iconBackgroundColor '#121110' --splashBackgroundColor '#121110' --splashBackgroundColorDark '#121110'
           fi
           
           # Tambahkan izin notifikasi, exact alarm, dan Android Share Target (ACTION_SEND)
@@ -112,7 +126,7 @@ jobs:
           npx cap sync android
           cd android && chmod +x gradlew && ./gradlew assembleDebug
           
-          # Ganti nama file APK dari app-debug.apk menjadi Substack-Recall.apk
+          # Ganti nama file APK menjadi Substack-Recall.apk
           cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Substack-Recall.apk
 
       - name: Upload APK Artifact
