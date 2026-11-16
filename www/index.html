@@ -3,406 +3,424 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Substack Recall — Spaced Repetition</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Substack Recall — Editorial Retention Companion</title>
+  <!-- CSS lokal hasil build offline dari GitHub Actions -->
+  <link rel="stylesheet" href="./tailwind.css" />
+  <!-- Fallback Tailwind CDN jika dibuka di browser tanpa build -->
   <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: '#FF6719',
-            darkbg: '#0f172a',
-            cardbg: '#1e293b'
-          }
-        }
+    window.addEventListener('error', function(e) {
+      if (e.target && e.target.href && e.target.href.includes('tailwind.css')) {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.tailwindcss.com';
+        document.head.appendChild(s);
       }
-    }
+    }, true);
   </script>
+  <!-- Lucide Icons (with offline inline SVG fallback) -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
   <style>
-    body { -webkit-tap-highlight-color: transparent; }
+    :root {
+      --bg-canvas: #121110;
+      --bg-surface: #1A1816;
+      --bg-elevated: #23201D;
+      --border-subtle: #2D2926;
+      --text-primary: #F3EFEA;
+      --text-secondary: #A69E94;
+      --text-muted: #6E675F;
+      --accent-editorial: #E06D3B;
+      --accent-hover: #C95B2B;
+    }
+
+    * {
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+
+    body {
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      margin: 0;
+      padding: 0;
+      overscroll-behavior-y: contain;
+    }
+
+    .font-editorial {
+      font-family: Georgia, "Times New Roman", Times, serif;
+      letter-spacing: -0.015em;
+    }
+
+    .surface-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .surface-elevated {
+      background-color: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .btn-primary {
+      background-color: var(--accent-editorial);
+      color: #121110;
+      font-weight: 600;
+      transition: background-color 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn-primary:active {
+      background-color: var(--accent-hover);
+      transform: scale(0.985);
+    }
+
+    .btn-secondary {
+      background-color: var(--bg-elevated);
+      color: var(--text-primary);
+      border: 1px solid var(--border-subtle);
+      transition: background-color 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn-secondary:active {
+      background-color: #2C2824;
+      transform: scale(0.985);
+    }
+
+    .divider-hairline {
+      border-color: var(--border-subtle);
+    }
+
+    .nav-item.active {
+      color: var(--accent-editorial);
+    }
+
+    .nav-item {
+      color: var(--text-muted);
+      transition: color 0.15s ease;
+    }
+
+    /* Hide scrollbar for clean tag rail */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* Drawer / Sheet Animation */
+    .sheet-backdrop {
+      background-color: rgba(10, 9, 8, 0.78);
+      backdrop-filter: blur(4px);
+    }
   </style>
 </head>
-<body class="bg-darkbg text-slate-100 min-h-screen font-sans pb-24">
+<body class="min-h-screen flex flex-col selection:bg-[#E06D3B]/30">
 
-  <!-- Header -->
-  <header class="sticky top-0 z-20 bg-darkbg/90 backdrop-blur-md border-b border-slate-800 px-4 py-3.5">
-    <div class="max-w-md mx-auto flex justify-between items-center gap-2">
+  <!-- Top Editorial Masthead -->
+  <header class="sticky top-0 z-20 bg-[#121110]/95 backdrop-blur-md border-b divider-hairline px-5 pt-4 pb-3.5">
+    <div class="max-w-lg mx-auto flex items-center justify-between">
       <div>
-        <h1 class="text-base font-bold tracking-tight flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-brand inline-block"></span>
-          Substack Recall
+        <span id="mastheadEyebrow" class="block text-[10px] uppercase tracking-[0.16em] text-[#A69E94] font-medium">
+          Reading Companion
+        </span>
+        <h1 id="mastheadTitle" class="font-editorial text-xl font-normal text-[#F3EFEA] mt-0.5">
+          Today’s Digest
         </h1>
-        <p class="text-[11px] text-slate-400">Spaced Repetition Reader</p>
       </div>
-      <div class="flex items-center gap-1.5">
-        <button onclick="testNotification10s()" id="testNotifBtn"
-          class="text-[11px] bg-brand/15 hover:bg-brand/25 border border-brand/40 text-brand px-2.5 py-1.5 rounded-full font-medium transition active:scale-95">
-          ⏱️ Test 10d
-        </button>
-        <button onclick="requestNotifPermission()" id="notifBadge"
-          class="text-[11px] bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1.5 rounded-full text-slate-300 transition active:scale-95">
-          🔔 Izin Notif
-        </button>
-      </div>
+      <button onclick="openComposeSheet()" aria-label="New Article Note"
+        class="btn-secondary px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5">
+        <span data-icon="plus" class="w-3.5 h-3.5"></span>
+        <span>Capture</span>
+      </button>
     </div>
   </header>
 
-  <main class="max-w-md mx-auto px-4 pt-5 space-y-6">
-
-    <!-- Banner Status Test Notifikasi -->
-    <div id="toastBanner" class="hidden bg-emerald-950/90 border border-emerald-700/70 text-emerald-200 text-xs px-4 py-3 rounded-xl shadow-lg"></div>
-
-    <!-- Statistik Singkat -->
-    <div class="grid grid-cols-2 gap-3">
-      <div class="bg-cardbg border border-slate-800 p-3.5 rounded-2xl">
-        <p class="text-xs text-slate-400">Wajib Review Hari Ini</p>
-        <p id="dueCount" class="text-2xl font-bold text-brand mt-1">0</p>
+  <!-- Inline Feedback Banner (Success / Error / Info States) -->
+  <div id="statusBannerWrapper" class="hidden max-w-lg w-full mx-auto px-5 pt-3">
+    <div id="statusBanner" class="px-3.5 py-2.5 rounded-lg border text-xs flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span id="statusBannerIcon" class="w-4 h-4 shrink-0"></span>
+        <span id="statusBannerText" class="truncate"></span>
       </div>
-      <div class="bg-cardbg border border-slate-800 p-3.5 rounded-2xl">
-        <p class="text-xs text-slate-400">Total Catatan</p>
-        <p id="totalCount" class="text-2xl font-bold text-slate-100 mt-1">0</p>
-      </div>
-    </div>
-
-    <!-- Form Tambah Catatan -->
-    <section class="bg-cardbg border border-slate-800 p-4 rounded-2xl space-y-3 shadow-lg">
-      <h2 class="text-sm font-semibold text-slate-200">+ Catat Artikel Baru</h2>
-      
-      <input type="text" id="titleInput" placeholder="Judul artikel Substack..." 
-        class="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-brand transition" />
-      
-      <input type="url" id="urlInput" placeholder="Link artikel (opsional, https://...)" 
-        class="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-brand transition" />
-      
-      <textarea id="noteInput" rows="3" placeholder="Intisari / poin penting yang ingin diingat..." 
-        class="w-full bg-slate-900/90 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-brand transition"></textarea>
-      
-      <button onclick="addNote()" 
-        class="w-full bg-brand hover:bg-orange-600 active:scale-[0.99] text-white font-semibold py-2.5 rounded-xl text-sm transition shadow-md shadow-brand/20">
-        Simpan & Jadwalkan Review (Besok)
+      <button onclick="hideBanner()" class="text-[#A69E94] hover:text-[#F3EFEA] shrink-0" aria-label="Dismiss">
+        <span data-icon="x" class="w-3.5 h-3.5"></span>
       </button>
-    </section>
+    </div>
+  </div>
 
-    <!-- Daftar Review Hari Ini -->
-    <section class="space-y-3">
-      <div class="flex justify-between items-center">
-        <h2 class="text-sm font-semibold text-slate-300">Jadwal Review Sekarang</h2>
-        <span class="text-[11px] text-slate-500">Tap kartu untuk lihat isi</span>
+  <!-- Main Viewport -->
+  <main class="flex-1 max-w-lg w-full mx-auto px-5 pt-5 pb-28">
+
+    <!-- ==================== 1. HOME VIEW ==================== -->
+    <section id="view-home" class="space-y-7">
+      <!-- Daily Review Focus Block -->
+      <div class="surface-card rounded-xl p-5 space-y-4">
+        <div class="flex items-baseline justify-between">
+          <span class="text-xs uppercase tracking-[0.12em] text-[#A69E94]">Daily Retention</span>
+          <span id="homeProgressLabel" class="text-xs text-[#A69E94]">0 of 0 reviewed</span>
+        </div>
+
+        <div>
+          <div class="flex items-baseline gap-2.5">
+            <span id="homeDueCount" class="font-editorial text-4xl text-[#F3EFEA]">0</span>
+            <span id="homeDueSubtext" class="text-sm text-[#A69E94]">articles due for recall</span>
+          </div>
+          <!-- Minimalist Progress Bar -->
+          <div class="w-full h-1 bg-[#262320] rounded-full overflow-hidden mt-3.5">
+            <div id="homeProgressBar" class="h-full bg-[#E06D3B] transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <div class="pt-1">
+          <button id="homePrimaryActionBtn" onclick="startReviewSession()"
+            class="btn-primary w-full py-3 px-4 rounded-lg text-sm flex items-center justify-center gap-2">
+            <span data-icon="book-open" class="w-4 h-4"></span>
+            <span id="homePrimaryActionText">Start Review Session</span>
+          </button>
+        </div>
       </div>
-      <div id="dueList" class="space-y-3"></div>
+
+      <!-- Next Scheduled Reminder Strip -->
+      <div id="homeNextScheduleStrip" class="flex items-center justify-between py-3 px-4 rounded-lg border divider-hairline text-xs">
+        <div class="flex items-center gap-2.5 text-[#A69E94]">
+          <span data-icon="clock" class="w-4 h-4 text-[#6E675F]"></span>
+          <span id="homeNextScheduleText">No upcoming reviews scheduled</span>
+        </div>
+        <button onclick="switchTab('library')" class="text-[#E06D3B] font-medium">Library</button>
+      </div>
+
+      <!-- Recently Saved Articles -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs uppercase tracking-[0.12em] text-[#A69E94] font-medium">Recently Saved</h2>
+          <button onclick="switchTab('library')" class="text-xs text-[#A69E94] hover:text-[#F3EFEA]">
+            View all
+          </button>
+        </div>
+
+        <div id="homeRecentList" class="divide-y divider-hairline border-t border-b divider-hairline"></div>
+      </div>
     </section>
 
-    <!-- Daftar Jadwal Mendatang -->
-    <section class="space-y-3 pt-2">
-      <h2 class="text-sm font-semibold text-slate-400">Jadwal Mendatang</h2>
-      <div id="upcomingList" class="space-y-2.5"></div>
+    <!-- ==================== 2. LIBRARY VIEW ==================== -->
+    <section id="view-library" class="hidden space-y-5">
+      <!-- Search Input -->
+      <div class="relative">
+        <span data-icon="search" class="w-4 h-4 text-[#6E675F] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></span>
+        <input type="search" id="librarySearchInput" oninput="renderLibrary()"
+          placeholder="Search titles, prompts, or notes..."
+          class="w-full bg-[#1A1816] border divider-hairline rounded-lg pl-10 pr-4 py-2.5 text-sm text-[#F3EFEA] placeholder-[#6E675F] focus:outline-none focus:border-[#E06D3B]" />
+      </div>
+
+      <!-- Tag Filter Rail -->
+      <div id="libraryTagRail" class="flex items-center gap-2 overflow-x-auto no-scrollbar"></div>
+
+      <!-- Article List -->
+      <div id="libraryArticleList" class="divide-y divider-hairline border-t border-b divider-hairline"></div>
+    </section>
+
+    <!-- ==================== 3. REVIEW VIEW ==================== -->
+    <section id="view-review" class="hidden space-y-5">
+      <!-- Session Header Bar -->
+      <div class="flex items-center justify-between text-xs text-[#A69E94]">
+        <span id="reviewSessionCounter">Queue: 0 remaining</span>
+        <span id="reviewCardInterval" class="px-2 py-0.5 rounded bg-[#1A1816] border divider-hairline text-[11px]">
+          Interval: 1d
+        </span>
+      </div>
+
+      <!-- Active Recall Stage -->
+      <div id="reviewCardContainer"></div>
+    </section>
+
+    <!-- ==================== 4. SETTINGS VIEW ==================== -->
+    <section id="view-settings" class="hidden space-y-6">
+      <!-- Notification & Reminder Schedule -->
+      <div class="space-y-2.5">
+        <h2 class="text-xs uppercase tracking-[0.12em] text-[#A69E94] font-medium">Reminders & Notifications</h2>
+        <div class="surface-card rounded-xl divide-y divider-hairline">
+          <div class="p-4 flex items-center justify-between gap-4">
+            <div>
+              <p class="text-sm font-medium text-[#F3EFEA]">System Notification Permission</p>
+              <p id="settingsPermStatus" class="text-xs text-[#A69E94] mt-0.5">Required for background spaced repetition alerts</p>
+            </div>
+            <button onclick="requestNotifPermission()" id="settingsPermBtn"
+              class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-medium shrink-0">
+              Enable
+            </button>
+          </div>
+
+          <div class="p-4 flex items-center justify-between gap-4">
+            <div>
+              <p class="text-sm font-medium text-[#F3EFEA]">Daily Review Time</p>
+              <p class="text-xs text-[#A69E94] mt-0.5">Target hour for scheduled recall prompts</p>
+            </div>
+            <input type="time" id="settingsTimeInput" onchange="updateNotifTime(this.value)"
+              class="bg-[#23201D] border divider-hairline rounded-lg px-2.5 py-1.5 text-xs text-[#F3EFEA] focus:outline-none focus:border-[#E06D3B]" />
+          </div>
+
+          <div class="p-4 flex items-center justify-between gap-4">
+            <div>
+              <p class="text-sm font-medium text-[#F3EFEA]">Verify Background Delivery</p>
+              <p class="text-xs text-[#A69E94] mt-0.5">Schedules a test alert 10 seconds from now</p>
+            </div>
+            <button onclick="testNotification10s()"
+              class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-medium shrink-0">
+              Test 10s
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Portability (Backup & Restore) -->
+      <div class="space-y-2.5">
+        <h2 class="text-xs uppercase tracking-[0.12em] text-[#A69E94] font-medium">Backup & Data Portability</h2>
+        <div class="surface-card rounded-xl divide-y divider-hairline">
+          <div class="p-4 space-y-3">
+            <div>
+              <p class="text-sm font-medium text-[#F3EFEA]">Export Knowledge Base</p>
+              <p class="text-xs text-[#A69E94] mt-0.5">Save all notes and SM-2 intervals as JSON</p>
+            </div>
+            <div class="grid grid-cols-2 gap-2.5">
+              <button onclick="exportJsonFile()"
+                class="btn-secondary py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5">
+                <span data-icon="download" class="w-3.5 h-3.5"></span>
+                <span>Download JSON</span>
+              </button>
+              <button onclick="copyBackupText()"
+                class="btn-secondary py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5">
+                <span data-icon="copy" class="w-3.5 h-3.5"></span>
+                <span>Copy JSON</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="p-4 space-y-3">
+            <div>
+              <p class="text-sm font-medium text-[#F3EFEA]">Restore from Backup</p>
+              <p class="text-xs text-[#A69E94] mt-0.5">Merge notes and reschedule Android alarms</p>
+            </div>
+            <div class="grid grid-cols-2 gap-2.5">
+              <label class="btn-secondary py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer">
+                <span data-icon="upload" class="w-3.5 h-3.5"></span>
+                <span>Import File</span>
+                <input type="file" id="importFileInput" accept=".json,application/json" onchange="importJsonFile(event)" class="hidden" />
+              </label>
+              <button onclick="togglePasteBox()"
+                class="btn-secondary py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5">
+                <span data-icon="file-text" class="w-3.5 h-3.5"></span>
+                <span>Paste JSON</span>
+              </button>
+            </div>
+
+            <div id="pasteImportBox" class="hidden pt-2 space-y-2.5">
+              <textarea id="pasteJsonInput" rows="3" placeholder="Paste exported JSON payload here..."
+                class="w-full bg-[#121110] border divider-hairline rounded-lg p-2.5 text-xs font-mono text-[#F3EFEA] placeholder-[#6E675F] focus:outline-none focus:border-[#E06D3B]"></textarea>
+              <button onclick="importFromPaste()" class="btn-primary w-full py-2 rounded-lg text-xs">
+                Restore Notes Now
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- About / Diagnostics -->
+      <div class="px-1 text-xs text-[#6E675F] flex items-center justify-between">
+        <span>Substack Recall • SM-2 Engine</span>
+        <span id="settingsRuntimeLabel">Web Mode</span>
+      </div>
     </section>
 
   </main>
 
-  <script>
-    const STORAGE_KEY = 'substack_sr_notes_v1';
-    const CHANNEL_ID = 'substack_recall_channel';
-    let notes = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  <!-- ==================== PERSISTENT BOTTOM NAVIGATION ==================== -->
+  <nav aria-label="Primary Navigation"
+    class="fixed bottom-0 inset-x-0 z-30 bg-[#121110]/95 backdrop-blur-md border-t divider-hairline">
+    <div class="max-w-lg mx-auto grid grid-cols-4 h-16">
+      <button onclick="switchTab('home')" id="nav-home" class="nav-item active flex flex-col items-center justify-center gap-1">
+        <span data-icon="home" class="w-5 h-5"></span>
+        <span class="text-[11px] font-medium">Home</span>
+      </button>
 
-    const isCapacitor = () => !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications);
+      <button onclick="switchTab('library')" id="nav-library" class="nav-item flex flex-col items-center justify-center gap-1">
+        <span data-icon="library" class="w-5 h-5"></span>
+        <span class="text-[11px] font-medium">Library</span>
+      </button>
 
-    function showBanner(msg) {
-      const banner = document.getElementById('toastBanner');
-      banner.textContent = msg;
-      banner.classList.remove('hidden');
-      setTimeout(() => banner.classList.add('hidden'), 5000);
-    }
+      <button onclick="switchTab('review')" id="nav-review" class="nav-item relative flex flex-col items-center justify-center gap-1">
+        <div class="relative">
+          <span data-icon="layers" class="w-5 h-5"></span>
+          <span id="navReviewDot" class="hidden absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[#E06D3B]"></span>
+        </div>
+        <span class="text-[11px] font-medium">Review</span>
+      </button>
 
-    // Inisialisasi Channel Notifikasi Android (High Importance agar muncul sebagai pop-up)
-    async function initNotificationChannel() {
-      if (!isCapacitor()) return;
-      const { LocalNotifications } = window.Capacitor.Plugins;
-      try {
-        await LocalNotifications.createChannel({
-          id: CHANNEL_ID,
-          name: 'Jadwal Review Artikel',
-          description: 'Pengingat Spaced Repetition untuk catatan bacaan Substack',
-          importance: 5,
-          visibility: 1,
-          vibration: true
-        });
-      } catch (e) {
-        console.warn('Channel info:', e);
-      }
-    }
+      <button onclick="switchTab('settings')" id="nav-settings" class="nav-item flex flex-col items-center justify-center gap-1">
+        <span data-icon="sliders" class="w-5 h-5"></span>
+        <span class="text-[11px] font-medium">Settings</span>
+      </button>
+    </div>
+  </nav>
 
-    // 1. Minta Izin Notifikasi
-    async function requestNotifPermission() {
-      const badge = document.getElementById('notifBadge');
-      if (isCapacitor()) {
-        const { LocalNotifications } = window.Capacitor.Plugins;
-        const perm = await LocalNotifications.requestPermissions();
-        await initNotificationChannel();
-        if (perm.display === 'granted') {
-          badge.textContent = '🔔 Notif Aktif';
-          badge.classList.remove('text-slate-300', 'border-slate-700');
-          badge.classList.add('text-emerald-400', 'border-emerald-800', 'bg-emerald-950/60');
-          showBanner('Izin notifikasi Android aktif!');
-        } else {
-          alert('Izin notifikasi ditolak. Aktifkan manual di Pengaturan HP > Aplikasi > Substack Recall > Notifikasi.');
-        }
-      } else if ('Notification' in window) {
-        const perm = await Notification.requestPermission();
-        if (perm === 'granted') {
-          badge.textContent = '🔔 Web Aktif';
-          badge.classList.add('text-emerald-400', 'border-emerald-800');
-        } else {
-          alert('Izin notifikasi ditolak browser.');
-        }
-      }
-    }
+  <!-- ==================== MODAL SHEET: ADD / EDIT ARTICLE ==================== -->
+  <div id="composeSheet" class="hidden fixed inset-0 z-40 sheet-backdrop flex items-end sm:items-center justify-center">
+    <div class="bg-[#1A1816] border-t sm:border divider-hairline w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-5 space-y-4 max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-2 border-b divider-hairline">
+        <h2 id="composeSheetTitle" class="font-editorial text-lg text-[#F3EFEA]">Capture Article Note</h2>
+        <button onclick="closeComposeSheet()" class="p-1.5 text-[#A69E94] hover:text-[#F3EFEA]" aria-label="Close">
+          <span data-icon="x" class="w-5 h-5"></span>
+        </button>
+      </div>
 
-    // 2. Tombol Test Notifikasi 10 Detik
-    async function testNotification10s() {
-      const triggerTime = new Date(Date.now() + 10 * 1000);
+      <div class="space-y-3">
+        <div>
+          <label class="block text-[11px] uppercase tracking-wider text-[#A69E94] mb-1">Article Title *</label>
+          <input type="text" id="titleInput" placeholder="e.g., The Architecture of Calm Software"
+            class="w-full bg-[#121110] border divider-hairline rounded-lg px-3.5 py-2.5 text-sm text-[#F3EFEA] placeholder-[#6E675F] focus:outline-none focus:border-[#E06D3B]" />
+        </div>
 
-      if (isCapacitor()) {
-        const { LocalNotifications } = window.Capacitor.Plugins;
-        const perm = await LocalNotifications.checkPermissions();
-        if (perm.display !== 'granted') {
-          await requestNotifPermission();
-        }
-        await initNotificationChannel();
-
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              id: 999999,
-              channelId: CHANNEL_ID,
-              title: '✅ Tes Notifikasi Berhasil!',
-              body: 'Notifikasi background Android berjalan normal. Siap untuk spaced repetition!',
-              schedule: { at: triggerTime, allowWhileIdle: true }
-            }
-          ]
-        });
-
-        showBanner('Notifikasi dijadwalkan 10 detik dari sekarang! Silakan tutup/minimize aplikasi untuk mengetes.');
-      } else {
-        showBanner('Mode Browser: Simulasi test notif 10 detik dijadwalkan.');
-        if ('Notification' in window && Notification.permission === 'granted') {
-          setTimeout(() => {
-            new Notification('✅ Tes Notifikasi Web Berhasil!', {
-              body: 'Jika di APK Android, notifikasi ini akan muncul dari sistem OS.'
-            });
-          }, 10000);
-        }
-      }
-    }
-
-    // 3. Jadwalkan Notifikasi OS via Capacitor
-    async function scheduleReviewNotification(note) {
-      if (!isCapacitor()) {
-        console.log(`[Simulasi Web] Notifikasi "${note.title}" dijadwalkan pada ${new Date(note.nextReview).toLocaleString('id-ID')}`);
-        return;
-      }
-
-      const { LocalNotifications } = window.Capacitor.Plugins;
-      await initNotificationChannel();
-      const notifId = Math.abs(note.id % 2147483647);
-
-      await LocalNotifications.cancel({ notifications: [{ id: notifId }] });
-
-      await LocalNotifications.schedule({
-        notifications: [
-          {
-            id: notifId,
-            channelId: CHANNEL_ID,
-            title: '🧠 Waktunya Review Artikel!',
-            body: `Ingat poin penting dari: "${note.title}"?`,
-            schedule: { at: new Date(note.nextReview), allowWhileIdle: true },
-            extra: { noteId: note.id }
-          }
-        ]
-      });
-    }
-
-    // 4. Tambah Catatan Baru
-    async function addNote() {
-      const title = document.getElementById('titleInput').value.trim();
-      const url = document.getElementById('urlInput').value.trim();
-      const content = document.getElementById('noteInput').value.trim();
-
-      if (!title || !content) {
-        alert('Judul dan intisari catatan wajib diisi.');
-        return;
-      }
-
-      const oneDayMs = 24 * 60 * 60 * 1000;
-      const newNote = {
-        id: Date.now(),
-        title,
-        url,
-        content,
-        interval: 1,
-        easeFactor: 2.5,
-        repetitions: 0,
-        nextReview: Date.now() + oneDayMs,
-        createdAt: Date.now()
-      };
-
-      notes.unshift(newNote);
-      saveNotes();
-      await scheduleReviewNotification(newNote);
-
-      document.getElementById('titleInput').value = '';
-      document.getElementById('urlInput').value = '';
-      document.getElementById('noteInput').value = '';
-      showBanner('Catatan disimpan! Notifikasi review dijadwalkan besok.');
-      render();
-    }
-
-    // 5. Algoritma SM-2 saat tombol review ditekan
-    async function processReview(id, quality) {
-      const idx = notes.findIndex(n => n.id === id);
-      if (idx === -1) return;
-
-      const note = notes[idx];
-
-      if (quality < 3) {
-        note.repetitions = 0;
-        note.interval = 1;
-      } else {
-        if (note.repetitions === 0) {
-          note.interval = 1;
-        } else if (note.repetitions === 1) {
-          note.interval = 3;
-        } else {
-          note.interval = Math.round(note.interval * note.easeFactor);
-        }
-        note.repetitions += 1;
-      }
-
-      note.easeFactor = Math.max(1.3, note.easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)));
-      
-      const targetDate = new Date(Date.now() + note.interval * 24 * 60 * 60 * 1000);
-      targetDate.setHours(9, 0, 0, 0);
-      note.nextReview = targetDate.getTime();
-
-      notes[idx] = note;
-      saveNotes();
-      await scheduleReviewNotification(note);
-      showBanner(`Jadwal berikutnya: ${note.interval} hari lagi (jam 09:00).`);
-      render();
-    }
-
-    async function deleteNote(id) {
-      if (!confirm('Hapus catatan ini?')) return;
-      if (isCapacitor()) {
-        const { LocalNotifications } = window.Capacitor.Plugins;
-        const notifId = Math.abs(id % 2147483647);
-        await LocalNotifications.cancel({ notifications: [{ id: notifId }] });
-      }
-      notes = notes.filter(n => n.id !== id);
-      saveNotes();
-      render();
-    }
-
-    function toggleReveal(id) {
-      const el = document.getElementById(`content-${id}`);
-      if (el) el.classList.toggle('hidden');
-    }
-
-    function saveNotes() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
-    }
-
-    function formatRelativeTime(timestamp) {
-      const diffMs = timestamp - Date.now();
-      const diffHours = Math.round(diffMs / (1000 * 60 * 60));
-      if (diffHours <= 0) return 'Sekarang';
-      if (diffHours < 24) return `${diffHours} jam lagi`;
-      const diffDays = Math.round(diffHours / 24);
-      return `${diffDays} hari lagi`;
-    }
-
-    function render() {
-      const now = Date.now();
-      const dueNotes = notes.filter(n => n.nextReview <= now);
-      const upcomingNotes = notes.filter(n => n.nextReview > now).sort((a, b) => a.nextReview - b.nextReview);
-
-      document.getElementById('dueCount').textContent = dueNotes.length;
-      document.getElementById('totalCount').textContent = notes.length;
-
-      const dueList = document.getElementById('dueList');
-      const upcomingList = document.getElementById('upcomingList');
-
-      if (dueNotes.length === 0) {
-        dueList.innerHTML = `<div class="text-center py-6 bg-cardbg/50 border border-dashed border-slate-800 rounded-2xl text-xs text-slate-400">Semua catatan sudah di-review! 🎉</div>`;
-      } else {
-        dueList.innerHTML = dueNotes.map(note => `
-          <div class="bg-cardbg border border-brand/40 p-4 rounded-2xl space-y-3">
-            <div onclick="toggleReveal(${note.id})" class="cursor-pointer">
-              <div class="flex justify-between items-start gap-2">
-                <h3 class="font-semibold text-sm text-slate-100">${escapeHtml(note.title)}</h3>
-                <span class="text-[10px] bg-brand/20 text-brand px-2 py-0.5 rounded-full shrink-0">Interval: ${note.interval}h</span>
-              </div>
-              <p class="text-xs text-slate-400 mt-1">Tap untuk uji ingatan & buka jawaban...</p>
-            </div>
-
-            <div id="content-${note.id}" class="hidden pt-2 border-t border-slate-800 space-y-3">
-              <p class="text-sm text-slate-200 whitespace-pre-line bg-slate-900/70 p-3 rounded-xl">${escapeHtml(note.content)}</p>
-              ${note.url ? `<a href="${escapeHtml(note.url)}" target="_blank" class="inline-block text-xs text-brand underline">Buka Artikel Asli ↗</a>` : ''}
-              
-              <div class="grid grid-cols-4 gap-1.5 pt-1">
-                <button onclick="processReview(${note.id}, 0)" class="bg-rose-950/80 hover:bg-rose-900 border border-rose-800/60 text-rose-300 py-2 rounded-lg text-xs font-medium">Lupa<br><span class="text-[10px] opacity-75">1 hr</span></button>
-                <button onclick="processReview(${note.id}, 3)" class="bg-amber-950/80 hover:bg-amber-900 border border-amber-800/60 text-amber-300 py-2 rounded-lg text-xs font-medium">Sulit<br><span class="text-[10px] opacity-75">~${Math.max(1, Math.round(note.interval * 1.2))} hr</span></button>
-                <button onclick="processReview(${note.id}, 4)" class="bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-800/60 text-emerald-300 py-2 rounded-lg text-xs font-medium">Ingat<br><span class="text-[10px] opacity-75">~${note.repetitions === 0 ? 1 : note.repetitions === 1 ? 3 : Math.round(note.interval * note.easeFactor)} hr</span></button>
-                <button onclick="processReview(${note.id}, 5)" class="bg-sky-950/80 hover:bg-sky-900 border border-sky-800/60 text-sky-300 py-2 rounded-lg text-xs font-medium">Mudah<br><span class="text-[10px] opacity-75">~${Math.round((note.interval || 1) * note.easeFactor * 1.3)} hr</span></button>
-              </div>
-            </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block text-[11px] uppercase tracking-wider text-[#A69E94] mb-1">Substack URL</label>
+            <input type="url" id="urlInput" placeholder="https://..."
+              class="w-full bg-[#121110] border divider-hairline rounded-lg px-3 py-2 text-xs text-[#F3EFEA] placeholder-[#6E675F] focus:outline-none focus:border-[#E06D3B]" />
           </div>
-        `).join('');
-      }
-
-      upcomingList.innerHTML = upcomingNotes.map(note => `
-        <div class="bg-cardbg/60 border border-slate-800/80 p-3.5 rounded-xl flex justify-between items-center gap-3">
-          <div class="min-w-0">
-            <h4 class="text-sm font-medium text-slate-200 truncate">${escapeHtml(note.title)}</h4>
-            <p class="text-xs text-slate-400 mt-0.5">Review: <span class="text-slate-300">${formatRelativeTime(note.nextReview)}</span> (Interval ${note.interval} hari)</p>
-          </div>
-          <div class="flex items-center gap-2 shrink-0">
-            <button onclick="forceDue(${note.id})" title="Test Review Sekarang" class="text-xs bg-slate-800 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg text-slate-300">Review</button>
-            <button onclick="deleteNote(${note.id})" title="Hapus" class="text-xs text-slate-500 hover:text-rose-400 px-1.5 py-1.5">✕</button>
+          <div>
+            <label class="block text-[11px] uppercase tracking-wider text-[#A69E94] mb-1">Topic Tags</label>
+            <input type="text" id="tagsInput" placeholder="design, systems"
+              class="w-full bg-[#121110] border divider-hairline rounded-lg px-3 py-2 text-xs text-[#F3EFEA] placeholder-[#6E675F] focus:outline-none focus:border-[#E06D3B]" />
           </div>
         </div>
-      `).join('');
-    }
 
-    function forceDue(id) {
-      const idx = notes.findIndex(n => n.id === id);
-      if (idx !== -1) {
-        notes[idx].nextReview = Date.now() - 1000;
-        saveNotes();
-        render();
-      }
-    }
+        <div>
+          <label class="block text-[11px] uppercase tracking-wider text-[#A69E94] mb-1">Active Recall Prompt</label>
+          <input type="text" id="promptInput" placeholder="Question to test yourself before revealing notes..."
+            class="w-full bg-[#121110] border divider-hairline rounded-lg px-3.5 py-2 text-xs text-[#F3EFEA] placeholder-[#6E675F] focus:outline-none focus:border-[#E06D3B]" />
+        </div>
 
-    function escapeHtml(str) {
-      return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-    }
+        <div>
+          <label class="block text-[11px] uppercase tracking-wider text-[#A69E94] mb-1">Key Takeaways & Answer *</label>
+          <textarea id="noteInput" rows="4" placeholder="Summarize the core argument in your own words..."
+            class="w-full bg-[#121110] border divider-hairline rounded-lg px-3.5 py-2.5 text-sm text-[#F3EFEA] placeholder-[#6E675F] focus:outline-none focus:border-[#E06D3B] leading-relaxed"></textarea>
+        </div>
+      </div>
 
-    // Otomatis cek status izin saat aplikasi dibuka
-    document.addEventListener('DOMContentLoaded', async () => {
-      render();
-      if (isCapacitor()) {
-        const { LocalNotifications } = window.Capacitor.Plugins;
-        const perm = await LocalNotifications.checkPermissions();
-        if (perm.display === 'granted') {
-          const badge = document.getElementById('notifBadge');
-          badge.textContent = '🔔 Notif Aktif';
-          badge.classList.remove('text-slate-300', 'border-slate-700');
-          badge.classList.add('text-emerald-400', 'border-emerald-800', 'bg-emerald-950/60');
-          await initNotificationChannel();
-        }
-      }
-    });
-  </script>
-</body>
-</html>
+      <div class="pt-2 flex items-center gap-2.5">
+        <button onclick="closeComposeSheet()" class="btn-secondary flex-1 py-2.5 rounded-lg text-sm font-medium">
+          Cancel
+        </button>
+        <button id="composeSubmitBtn" onclick="saveFormNote()" class="btn-primary flex-[2] py-2.5 rounded-lg text-sm">
+          Save & Schedule Recall
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL SHEET: ARTICLE DETAIL ==================== -->
+  <div id="detailSheet" class="hidden fixed inset-0 z-40 sheet-backdrop flex items-end sm:items-center justify-center">
+    <div id="detailSheetContent" class="bg-[#1A1816] border-t sm:border divider-hairline w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+    </div>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       1. ICON SYSTEM (Lucide + Offline Inline SVG Fallback)
+       ========================================================================== */
+    const FALLBACK_SVGS = {
+      'plus': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>',
+      'x': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
+      'book-open': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M
