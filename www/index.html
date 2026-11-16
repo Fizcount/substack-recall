@@ -11,7 +11,7 @@
       theme: {
         extend: {
           colors: {
-            brand: '#FF6719', // Aksen warna khas Substack
+            brand: '#FF6719',
             darkbg: '#0f172a',
             cardbg: '#1e293b'
           }
@@ -26,20 +26,32 @@
 <body class="bg-darkbg text-slate-100 min-h-screen font-sans pb-24">
 
   <!-- Header -->
-  <header class="sticky top-0 z-20 bg-darkbg/80 backdrop-blur-md border-b border-slate-800 px-4 py-4 flex justify-between items-center">
-    <div>
-      <h1 class="text-lg font-bold tracking-tight flex items-center gap-2">
-        <span class="w-2.5 h-2.5 rounded-full bg-brand inline-block"></span>
-        Substack Recall
-      </h1>
-      <p class="text-xs text-slate-400">Spaced Repetition Reader Notes</p>
+  <header class="sticky top-0 z-20 bg-darkbg/90 backdrop-blur-md border-b border-slate-800 px-4 py-3.5">
+    <div class="max-w-md mx-auto flex justify-between items-center gap-2">
+      <div>
+        <h1 class="text-base font-bold tracking-tight flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-brand inline-block"></span>
+          Substack Recall
+        </h1>
+        <p class="text-[11px] text-slate-400">Spaced Repetition Reader</p>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button onclick="testNotification10s()" id="testNotifBtn"
+          class="text-[11px] bg-brand/15 hover:bg-brand/25 border border-brand/40 text-brand px-2.5 py-1.5 rounded-full font-medium transition active:scale-95">
+          ⏱️ Test 10d
+        </button>
+        <button onclick="requestNotifPermission()" id="notifBadge"
+          class="text-[11px] bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1.5 rounded-full text-slate-300 transition active:scale-95">
+          🔔 Izin Notif
+        </button>
+      </div>
     </div>
-    <button onclick="requestNotifPermission()" id="notifBadge" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded-full text-slate-300 transition">
-      🔔 Cek Izin Notif
-    </button>
   </header>
 
   <main class="max-w-md mx-auto px-4 pt-5 space-y-6">
+
+    <!-- Banner Status Test Notifikasi -->
+    <div id="toastBanner" class="hidden bg-emerald-950/90 border border-emerald-700/70 text-emerald-200 text-xs px-4 py-3 rounded-xl shadow-lg"></div>
 
     <!-- Statistik Singkat -->
     <div class="grid grid-cols-2 gap-3">
@@ -91,25 +103,55 @@
 
   <script>
     const STORAGE_KEY = 'substack_sr_notes_v1';
+    const CHANNEL_ID = 'substack_recall_channel';
     let notes = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
 
-    // Helper: Deteksi apakah berjalan di dalam Capacitor Android/iOS
-    const isCapacitor = () => window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+    const isCapacitor = () => !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications);
 
-    // 1. Minta Izin Notifikasi (Capacitor Native atau Web Fallback)
+    function showBanner(msg) {
+      const banner = document.getElementById('toastBanner');
+      banner.textContent = msg;
+      banner.classList.remove('hidden');
+      setTimeout(() => banner.classList.add('hidden'), 5000);
+    }
+
+    // Inisialisasi Channel Notifikasi Android (High Importance agar muncul sebagai pop-up)
+    async function initNotificationChannel() {
+      if (!isCapacitor()) return;
+      const { LocalNotifications } = window.Capacitor.Plugins;
+      try {
+        await LocalNotifications.createChannel({
+          id: CHANNEL_ID,
+          name: 'Jadwal Review Artikel',
+          description: 'Pengingat Spaced Repetition untuk catatan bacaan Substack',
+          importance: 5,
+          visibility: 1,
+          vibration: true
+        });
+      } catch (e) {
+        console.warn('Channel info:', e);
+      }
+    }
+
+    // 1. Minta Izin Notifikasi
     async function requestNotifPermission() {
       const badge = document.getElementById('notifBadge');
       if (isCapacitor()) {
         const { LocalNotifications } = window.Capacitor.Plugins;
         const perm = await LocalNotifications.requestPermissions();
+        await initNotificationChannel();
         if (perm.display === 'granted') {
-          badge.textContent = '🔔 Notif Aktif (Native)';
-          badge.classList.add('text-emerald-400', 'border-emerald-800');
+          badge.textContent = '🔔 Notif Aktif';
+          badge.classList.remove('text-slate-300', 'border-slate-700');
+          badge.classList.add('text-emerald-400', 'border-emerald-800', 'bg-emerald-950/60');
+          showBanner('Izin notifikasi Android aktif!');
+        } else {
+          alert('Izin notifikasi ditolak. Aktifkan manual di Pengaturan HP > Aplikasi > Substack Recall > Notifikasi.');
         }
       } else if ('Notification' in window) {
         const perm = await Notification.requestPermission();
         if (perm === 'granted') {
-          badge.textContent = '🔔 Notif Aktif (Web)';
+          badge.textContent = '🔔 Web Aktif';
           badge.classList.add('text-emerald-400', 'border-emerald-800');
         } else {
           alert('Izin notifikasi ditolak browser.');
@@ -117,35 +159,71 @@
       }
     }
 
-    // 2. Jadwalkan Notifikasi OS via Capacitor
+    // 2. Tombol Test Notifikasi 10 Detik
+    async function testNotification10s() {
+      const triggerTime = new Date(Date.now() + 10 * 1000);
+
+      if (isCapacitor()) {
+        const { LocalNotifications } = window.Capacitor.Plugins;
+        const perm = await LocalNotifications.checkPermissions();
+        if (perm.display !== 'granted') {
+          await requestNotifPermission();
+        }
+        await initNotificationChannel();
+
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: 999999,
+              channelId: CHANNEL_ID,
+              title: '✅ Tes Notifikasi Berhasil!',
+              body: 'Notifikasi background Android berjalan normal. Siap untuk spaced repetition!',
+              schedule: { at: triggerTime, allowWhileIdle: true }
+            }
+          ]
+        });
+
+        showBanner('Notifikasi dijadwalkan 10 detik dari sekarang! Silakan tutup/minimize aplikasi untuk mengetes.');
+      } else {
+        showBanner('Mode Browser: Simulasi test notif 10 detik dijadwalkan.');
+        if ('Notification' in window && Notification.permission === 'granted') {
+          setTimeout(() => {
+            new Notification('✅ Tes Notifikasi Web Berhasil!', {
+              body: 'Jika di APK Android, notifikasi ini akan muncul dari sistem OS.'
+            });
+          }, 10000);
+        }
+      }
+    }
+
+    // 3. Jadwalkan Notifikasi OS via Capacitor
     async function scheduleReviewNotification(note) {
       if (!isCapacitor()) {
-        console.log(`[Simulasi Web] Notifikasi dijadwalkan untuk "${note.title}" pada ${new Date(note.nextReview).toLocaleString('id-ID')}`);
+        console.log(`[Simulasi Web] Notifikasi "${note.title}" dijadwalkan pada ${new Date(note.nextReview).toLocaleString('id-ID')}`);
         return;
       }
 
       const { LocalNotifications } = window.Capacitor.Plugins;
-      // Gunakan numeric ID 32-bit yang aman untuk Android NotificationManager
+      await initNotificationChannel();
       const notifId = Math.abs(note.id % 2147483647);
 
-      // Batalkan jadwal lama jika ada (untuk note yang sama)
       await LocalNotifications.cancel({ notifications: [{ id: notifId }] });
 
       await LocalNotifications.schedule({
         notifications: [
           {
             id: notifId,
+            channelId: CHANNEL_ID,
             title: '🧠 Waktunya Review Artikel!',
             body: `Ingat poin penting dari: "${note.title}"?`,
             schedule: { at: new Date(note.nextReview), allowWhileIdle: true },
-            sound: null,
             extra: { noteId: note.id }
           }
         ]
       });
     }
 
-    // 3. Tambah Catatan Baru
+    // 4. Tambah Catatan Baru
     async function addNote() {
       const title = document.getElementById('titleInput').value.trim();
       const url = document.getElementById('urlInput').value.trim();
@@ -156,14 +234,13 @@
         return;
       }
 
-      // Interval awal: 1 hari (24 jam dari sekarang)
       const oneDayMs = 24 * 60 * 60 * 1000;
       const newNote = {
         id: Date.now(),
         title,
         url,
         content,
-        interval: 1, // dalam hari
+        interval: 1,
         easeFactor: 2.5,
         repetitions: 0,
         nextReview: Date.now() + oneDayMs,
@@ -174,15 +251,14 @@
       saveNotes();
       await scheduleReviewNotification(newNote);
 
-      // Reset input
       document.getElementById('titleInput').value = '';
       document.getElementById('urlInput').value = '';
       document.getElementById('noteInput').value = '';
+      showBanner('Catatan disimpan! Notifikasi review dijadwalkan besok.');
       render();
     }
 
-    // 4. Algoritma SM-2 saat tombol review ditekan
-    // quality: 0 = Lupa, 3 = Sulit, 4 = Ingat, 5 = Mudah
+    // 5. Algoritma SM-2 saat tombol review ditekan
     async function processReview(id, quality) {
       const idx = notes.findIndex(n => n.id === id);
       if (idx === -1) return;
@@ -190,7 +266,6 @@
       const note = notes[idx];
 
       if (quality < 3) {
-        // Lupa -> Reset interval ke 1 hari
         note.repetitions = 0;
         note.interval = 1;
       } else {
@@ -204,10 +279,8 @@
         note.repetitions += 1;
       }
 
-      // Update Ease Factor (minimal 1.3)
       note.easeFactor = Math.max(1.3, note.easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)));
       
-      // Set waktu review berikutnya (jam 09:00 pagi pada hari target agar notif muncul di jam produktif)
       const targetDate = new Date(Date.now() + note.interval * 24 * 60 * 60 * 1000);
       targetDate.setHours(9, 0, 0, 0);
       note.nextReview = targetDate.getTime();
@@ -215,11 +288,17 @@
       notes[idx] = note;
       saveNotes();
       await scheduleReviewNotification(note);
+      showBanner(`Jadwal berikutnya: ${note.interval} hari lagi (jam 09:00).`);
       render();
     }
 
-    function deleteNote(id) {
+    async function deleteNote(id) {
       if (!confirm('Hapus catatan ini?')) return;
+      if (isCapacitor()) {
+        const { LocalNotifications } = window.Capacitor.Plugins;
+        const notifId = Math.abs(id % 2147483647);
+        await LocalNotifications.cancel({ notifications: [{ id: notifId }] });
+      }
       notes = notes.filter(n => n.id !== id);
       saveNotes();
       render();
@@ -243,7 +322,6 @@
       return `${diffDays} hari lagi`;
     }
 
-    // 5. Render UI
     function render() {
       const now = Date.now();
       const dueNotes = notes.filter(n => n.nextReview <= now);
@@ -297,7 +375,6 @@
       `).join('');
     }
 
-    // Helper untuk testing langsung tanpa menunggu 24 jam
     function forceDue(id) {
       const idx = notes.findIndex(n => n.id === id);
       if (idx !== -1) {
@@ -311,7 +388,21 @@
       return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
     }
 
-    render();
+    // Otomatis cek status izin saat aplikasi dibuka
+    document.addEventListener('DOMContentLoaded', async () => {
+      render();
+      if (isCapacitor()) {
+        const { LocalNotifications } = window.Capacitor.Plugins;
+        const perm = await LocalNotifications.checkPermissions();
+        if (perm.display === 'granted') {
+          const badge = document.getElementById('notifBadge');
+          badge.textContent = '🔔 Notif Aktif';
+          badge.classList.remove('text-slate-300', 'border-slate-700');
+          badge.classList.add('text-emerald-400', 'border-emerald-800', 'bg-emerald-950/60');
+          await initNotificationChannel();
+        }
+      }
+    });
   </script>
 </body>
 </html>
