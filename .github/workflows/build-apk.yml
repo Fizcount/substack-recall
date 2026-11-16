@@ -23,18 +23,100 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Initialize Capacitor & Build APK
+      - name: Bundle Tailwind, Generate Icons & Build APK
         run: |
           npm init -y
-          npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/local-notifications
+          npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/local-notifications @capacitor/assets tailwindcss@3
+          
+          # Compile Tailwind CSS secara lokal agar 100% offline
+          printf "@tailwind base;\n@tailwind components;\n@tailwind utilities;\n" > input.css
+          npx tailwindcss -i input.css -o www/tailwind.css --content "www/index.html" --minify
+          
           npx cap init "Substack Recall" "com.faiz.substackrecall" --web-dir=www
           npx cap add android
-          sed -i 's/<manifest xmlns:android="http:\/\/schemas.android.com\/apk\/res\/android">/<manifest xmlns:android="http:\/\/schemas.android.com\/apk\/res\/android">\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" \/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" \/>/' android/app/src/main/AndroidManifest.xml
+          
+          # Generate semua resolusi icon Android dari assets/icon.png jika tersedia
+          if [ -f "assets/icon.png" ]; then
+            cp assets/icon.png assets/icon-only.png
+            cp assets/icon.png assets/icon-foreground.png
+            npx capacitor-assets generate --android --iconBackgroundColor '#121110'
+          fi
+          
+          # Tambahkan izin notifikasi, exact alarm, dan Android Share Target (ACTION_SEND)
+          python3 -c '
+          path = "android/app/src/main/AndroidManifest.xml"
+          with open(path, "r") as f:
+              xml = f.read()
+          perms = """    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+              <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />"""
+          xml = xml.replace("<application", perms + "\n    <application", 1)
+          share_intent = """            <intent-filter>
+                      <action android:name="android.intent.action.SEND" />
+                      <category android:name="android.intent.category.DEFAULT" />
+                      <data android:mimeType="text/plain" />
+                  </intent-filter>"""
+          xml = xml.replace("</activity>", share_intent + "\n        </activity>", 1)
+          with open(path, "w") as f:
+              f.write(xml)
+          '
+          
+          # Tambahkan handler di MainActivity.java untuk meneruskan teks/link Share ke WebView
+          MAIN_ACT=$(find android/app/src/main/java -name "MainActivity.java")
+          python3 -c '
+          import sys
+          path = sys.argv[1]
+          with open(path, "r") as f:
+              code = f.read()
+          imports = """import android.content.Intent;
+          import android.os.Bundle;
+          import org.json.JSONObject;
+          """
+          injection = """
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  handleShareIntent(getIntent());
+              }
+
+              @Override
+              protected void onNewIntent(Intent intent) {
+                  super.onNewIntent(intent);
+                  setIntent(intent);
+                  handleShareIntent(intent);
+              }
+
+              private void handleShareIntent(Intent intent) {
+                  if (intent != null && Intent.ACTION_SEND.equals(intent.getAction()) && "text/plain".equals(intent.getType())) {
+                      String sharedText = intent.getStringExtra(Intent.EXTRA_TEXT);
+                      String sharedSubject = intent.getStringExtra(Intent.EXTRA_SUBJECT);
+                      if (sharedText != null) {
+                          try {
+                              JSONObject payload = new JSONObject();
+                              payload.put("text", sharedText);
+                              payload.put("subject", sharedSubject != null ? sharedSubject : "");
+                              final String js = "window.__PENDING_SHARE__ = " + payload.toString() + "; if(window.onAndroidShare) window.onAndroidShare(window.__PENDING_SHARE__);";
+                              if (getBridge() != null && getBridge().getWebView() != null) {
+                                  getBridge().getWebView().post(() -> getBridge().getWebView().evaluateJavascript(js, null));
+                              }
+                          } catch (Exception ignored) {}
+                      }
+                  }
+              }
+          """
+          code = code.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\n" + imports)
+          code = code.replace("public class MainActivity extends BridgeActivity {}", "public class MainActivity extends BridgeActivity {" + injection + "}")
+          with open(path, "w") as f:
+              f.write(code)
+          ' "$MAIN_ACT"
+          
           npx cap sync android
           cd android && chmod +x gradlew && ./gradlew assembleDebug
+          
+          # Ganti nama file APK dari app-debug.apk menjadi Substack-Recall.apk
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/Substack-Recall.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Substack-Recall-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: Substack-Recall
+          path: android/app/build/outputs/apk/debug/Substack-Recall.apk
