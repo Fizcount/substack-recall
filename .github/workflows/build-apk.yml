@@ -29,10 +29,22 @@ jobs:
 
       - name: Bundle Tailwind, Generate Icons & Build APK
         run: |
+          # Pastikan folder www/ dan file www/index.html selalu tersedia
+          mkdir -p www
+          if [ ! -f "www/index.html" ]; then
+            FOUND_HTML=$(find . -maxdepth 3 -name "index.html" -not -path "./node_modules/*" -not -path "./android/*" | head -n 1)
+            if [ -n "$FOUND_HTML" ]; then
+              cp "$FOUND_HTML" www/index.html
+            else
+              echo "ERROR: File index.html tidak ditemukan di repositori!"
+              exit 1
+            fi
+          fi
+
           npm init -y
           npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/local-notifications @capacitor/assets tailwindcss@3
           
-          # Buat tailwind.config.js agar semua class di www/index.html ter-compile sempurna
+          # Compile Tailwind CSS secara lokal agar 100% offline
           cat << 'EOF' > tailwind.config.js
           module.exports = {
             content: ["./www/**/*.html"],
@@ -47,12 +59,15 @@ jobs:
           npx cap init "Substack Recall" "com.faiz.substackrecall" --web-dir=www
           npx cap add android
           
-          # Generate icon dan splash dari assets/icon.png
-          if [ -f "assets/icon.png" ]; then
-            cp assets/icon.png assets/icon-only.png
-            cp assets/icon.png assets/icon-foreground.png
-            cp assets/icon.png assets/splash.png
-            cp assets/icon.png assets/splash-dark.png
+          # Generate icon dan splash dari icon.png (baik di folder assets/ maupun root)
+          ICON_FILE=$(find . -maxdepth 2 -name "icon.png" | head -n 1)
+          if [ -n "$ICON_FILE" ]; then
+            mkdir -p assets
+            cp "$ICON_FILE" assets/icon.png
+            cp "$ICON_FILE" assets/icon-only.png
+            cp "$ICON_FILE" assets/icon-foreground.png
+            cp "$ICON_FILE" assets/splash.png
+            cp "$ICON_FILE" assets/splash-dark.png
             npx capacitor-assets generate --android --iconBackgroundColor '#121110' --splashBackgroundColor '#121110' --splashBackgroundColorDark '#121110'
           fi
           
